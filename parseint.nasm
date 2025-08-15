@@ -198,10 +198,6 @@ AND_OPT equ 2
 ; -------------------------------------------------------------
 section .text
 
-; Convert string to number:
-;   one -> 1
-;   one hundred and three -> 103
-;
 ; rax - current number value
 ; rbx - string table start addr
 ; rcx - length of string for cmpsb
@@ -212,190 +208,192 @@ section .text
 ; r9  - temp storage
 ; r11 - temp storage
 parseint:
-  push rbx
-  push rbp
+    push rbx
+    push rbp
 
-  mov rbp, NUM_REQ
-  xor rax, rax
+    mov rbp, NUM_REQ
+    xor rax, rax
 
-  push rax
+    push rax
 
 next_word:
-  cmp byte [rdi], ' '
-  jne .check_end
-  inc rdi
+    cmp byte [rdi], ' '
+    jne .check_end
+    inc rdi
 
 .check_end:
-  cmp byte [rdi], 0
-  je end
-  mov rcx, rdi
+    cmp byte [rdi], 0
+    je end
+    mov rcx, rdi
 
-.seek_word_end:
-  cmp byte [rcx], 0
-  je .word_len
-  
-  cmp byte [rcx], ' '
-  je .word_len
-  
-  cmp byte [rcx], '-'
-  je .word_len
+    .seek_word_end:
+        cmp byte [rcx], 0
+        je .word_len
 
-  inc rcx
-  jmp .seek_word_end
+        cmp byte [rcx], ' '
+        je .word_len
+
+        cmp byte [rcx], '-'
+        je .word_len
+
+        inc rcx
+        jmp .seek_word_end
 
 .word_len:
-  sub rcx, rdi
-  jz end
+    sub rcx, rdi
+    jz end
 
 parse_word:
-  cmp rbp, NUM_REQ
-  je .number
-  cmp rbp, MAG_REQ
-  je .magnitude
+    cmp rbp, NUM_REQ
+    je .number
+    cmp rbp, MAG_REQ
+    je .magnitude
 
 .and:
-  call parse_and
-  mov rbp, NUM_REQ
-  jmp next_word
+    call parse_and
+    mov rbp, NUM_REQ
+    jmp next_word
 
 .magnitude:
-  call parse_magnitude
-  cmp r8, 1
-  je end
+    call parse_magnitude
+    cmp r8, 1
+    je end
 
-  mov rbp, AND_OPT
-  jmp next_word
+    mov rbp, AND_OPT
+    jmp next_word
 
 .number:
-  call parse_number
+    call parse_number
 
-  cmp byte [rdi], '-' ; if "-", then the next string is a number, set state accordingly
-  je .another_number
+    cmp byte [rdi], '-' ; if "-", then the next string is a number, set state accordingly
+    je .another_number
  
-  mov rbp, MAG_REQ
-  jmp next_word
+    mov rbp, MAG_REQ
+    jmp next_word
 
-  .another_number:
+    .another_number:
     mov rbp, NUM_REQ
     inc rdi
     jmp next_word
 
 next_state:
-  cmp r8, 0
-  jne .fail
+    cmp r8, 0
+    jne .fail
 .success:
-  cmp rbp, AND_OPT
-  je .reset
-  inc rbp
-  jmp next_word
+    cmp rbp, AND_OPT
+    je .reset
+    inc rbp
+    jmp next_word
 .fail:
-  cmp rbp, AND_OPT
-  jne end
+    cmp rbp, AND_OPT
+    jne end
 .reset:
-  xor rbp, rbp
-  jmp next_word
-    
+    xor rbp, rbp
+    jmp next_word
+
 end:
-  cmp rax, 0
-  je .ret
-  add qword [rsp], rax
+    cmp rax, 0
+    je .ret
+    add qword [rsp], rax
 .ret:
-  pop rax
-  pop rbp
-  pop rbx
-  ret
+    pop rax
+    pop rbp
+    pop rbx
+    ret
 
 ; -------------------------------------------------------------
 ; Tries to parse 'and' starting at rdi
 ; always returns 0
 parse_and:
-  xor r8, r8
+    xor r8, r8
 
-  cmp rcx, land
-  jne .end
+    cmp rcx, land
+    jne .end
 
-  mov rsi, sand
-  mov r9, rdi
+    mov rsi, sand
+    mov r9, rdi
 
-  repe cmpsb
-  jz .end
+    repe cmpsb
+    jz .end
 
-  mov rdi, r9
+    mov rdi, r9
 
 .end:
-  ret
+    ret
 
 ; -------------------------------------------------------------
 ; Searches magnitude string at rdi
 ; r8 = 0 if success, 1 if not found
 parse_magnitude:
-  xor r8, r8
-  mov rbx, MAGNITUDE
-.loop:
-  cmp ecx, dword [rbx]
-  je .cmp
-.next:
-  add rbx, MAGNITUDE_RECORD_LEN
-  cmp rbx, MAGNITUDE_END
-  jl .loop
-  mov r8, 1
-  ret
+    xor r8, r8
+    mov rbx, MAGNITUDE
+    .loop:
+        cmp ecx, dword [rbx]
+        je .cmp
+    .next:
+        add rbx, MAGNITUDE_RECORD_LEN
+        cmp rbx, MAGNITUDE_END
+        jl .loop
+        mov r8, 1
+        ret
 
-.cmp:
-  mov rsi, qword [rbx+8]
-  mov edx, ecx
-  mov r9, rdi
+    .cmp:
+        mov rsi, qword [rbx+8]
+        mov edx, ecx
+        mov r9, rdi
 
-  repe cmpsb
-  jz .found
+        repe cmpsb
+        jz .found
 
-  mov ecx, edx
-  mov rdi, r9
-  jmp .next
+        mov ecx, edx
+        mov rdi, r9
+        jmp .next
 
 .found:
-  mov r9d, dword [rbx+4]
-  xor rdx, rdx
-  mul r9d
+    mov r9d, dword [rbx+4]
+    xor rdx, rdx
+    mul r9d
 
-  cmp r9d, vh        ; if magnitude > 100: add value with stack value and nullify rax
-  je .ret
+    cmp r9d, vh        ; if magnitude > 100: add value with stack value and nullify rax
+    je .ret
 
-  add qword [rsp+8], rax
-  xor rax, rax
+    add qword [rsp+8], rax
+    xor rax, rax
 .ret:
-  ret
+    ret
 
 ; -------------------------------------------------------------
 ; Searches number string at rdi
 ; r8 = 0 if success, 1 if not found
 parse_number:
-  xor r8, r8
-  mov rbx, NUMBERS
-.loop:
-  cmp ecx, dword [rbx]
-  je .cmp
-.next:
-  add rbx, NUMBER_RECORD_LEN
-  cmp rbx, NUMBERS_END
-  jl .loop
-  mov r8, 1
-  ret
+    xor r8, r8
+    mov rbx, NUMBERS
 
-.cmp:
-  mov rsi, qword [rbx+8]
-  mov edx, ecx
-  mov r9, rdi
+    .loop:
+        cmp ecx, dword [rbx]
+        je .cmp
+    .next:
+        add rbx, NUMBER_RECORD_LEN
+        cmp rbx, NUMBERS_END
+        jl .loop
 
-  repe cmpsb
-  jz .found
+        mov r8, 1
+        ret
 
-  mov rdi, r9
-  mov ecx, edx
-  jmp .next
+    .cmp:
+        mov rsi, qword [rbx+8]
+        mov edx, ecx
+        mov r9, rdi
+
+        repe cmpsb
+        jz .found
+
+        mov rdi, r9
+        mov ecx, edx
+        jmp .next
 
 .found:
-  movsx rdx, dword [rbx+4]
-  add rax, rdx
-  ret
+    movsx rdx, dword [rbx+4]
+    add rax, rdx
+    ret
 

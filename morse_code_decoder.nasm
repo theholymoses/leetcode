@@ -80,105 +80,94 @@ section .text
 ; rdi - morse code
 ; rsi - preallocated output buffer
 decode_morse:
-  mov r8, rsi         ; rsi will be used for comparison of morse-codes
-  mov r9, 0           ; signifies that there were no chars decoded yet
+    mov r8, rsi                 ; rsi will be used for comparison of morse-codes
+    mov r9, 0                   ; signifies that there were no chars decoded yet
 
 
-; iterate over spaces prefixing next morse-code
-.prefix:
-  mov rdx, rdi
+.prefix:                        ; iterate over spaces prefixing next morse-code
+    mov rdx, rdi
 
-.prefix_loop:
-  mov al, byte [rdx]
+    .prefix_loop:
+        mov al, byte [rdx]
 
-  cmp al, 0
-  je .end
+        cmp al, 0
+        je .end
 
-  cmp al, ' '
-  jne .act_on_prefix
+        cmp al, ' '
+        jne .act_on_prefix
 
-  inc rdx
-  jmp .prefix_loop
+        inc rdx
+        jmp .prefix_loop
 
+.act_on_prefix:                 ; count prefixing spaces and decide what to do with them
+    mov rcx, rdx                ; count encountered spaces
+    sub rcx, rdi
+    jz .frame_code_loop         ; 0 spaced encountered
 
-; count prefixing spaces and decide what to do with them
-.act_on_prefix:
-  mov rcx, rdx                ; count encountered spaces
-  sub rcx, rdi
-  jz .frame_code_loop         ; 0 spaced encountered
+    mov rdi, rdx                ; shift input pointer from prefix
 
-  mov rdi, rdx                ; shift input pointer from prefix
+    cmp r9, 0
+    je .frame_code_loop         ; no chars were parsed yet, skip spaces
 
-  cmp r9, 0
-  je .frame_code_loop         ; no chars were parsed yet, skip spaces
-
-  cmp rcx, 3
-  jl .frame_code_loop         ; chars were parsed, but there are not enough spaces to make it a word border
+    cmp rcx, 3
+    jl .frame_code_loop         ; chars were parsed, but there are not enough spaces to make it a word border
  
-  mov byte [r8], ' '          ; word border encountered
-  inc r8
+    mov byte [r8], ' '          ; word border encountered
+    inc r8
 
+    .frame_code_loop:           ; iterate over morse-code chars
+        cmp al, '.'
+        je .frame_code_next
+        cmp al, '-'
+        jne .decode
 
-; iterate over morse-code chars
-.frame_code_loop:
-  cmp al, '.'
-  je .frame_code_next
-  cmp al, '-'
-  jne .decode
+    .frame_code_next:
+        inc rdx
+        mov al, byte [rdx]
+        jmp .frame_code_loop
 
-.frame_code_next:
-  inc rdx
-  mov al, byte [rdx]
-  jmp .frame_code_loop
+.decode:                        ; count morse-code chars encountered and try to decode them
+    sub rdx, rdi                ; lenght of a code
+    jz .end                     ; length is 0
 
+    mov rcx, 0                  ; index to morse-code array
 
-; count morse-code chars encountered and try to decode them
-.decode:
-  sub rdx, rdi      ; lenght of a code
-  jz .end           ; length is 0
+    .decode_loop:
+        mov rsi, [code + rcx * 8]
+        cmp byte [rsi], 0
+        je .end
 
-  mov rcx, 0        ; index to morse-code array
+        ; rdi - ptr
+        ; rsi - compared string
+        ; rdx - len of rdi
+        call morsecodecmpn
+        cmp rax, 0
+        je .write_decoded
 
-.decode_loop:
-  mov rsi, [code + rcx * 8]
-  cmp byte [rsi], 0
-  je .end
+    .decode_next:
+        inc rcx
+        jmp .decode_loop
 
-  ; rdi - ptr
-  ; rsi - compared string
-  ; rdx - len of rdi
-  call morsecodecmpn
-  cmp rax, 0
-  je .write_decoded
+.write_decoded:                 ; write appropriate character sequence to output buffer in r8
+    add rdi, rdx                ; shift base pointer rdi to the current position after decoded morse-code
+    mov r9, 1                   ; make it known for prefix parser that next 3 spaces might be a word border
 
-.decode_next:
-  inc rcx
-  jmp .decode_loop
+    add rsi, rdx                ; shift code-pointer so that it points at 0, after which decoded string is located
 
+    .write_decoded_loop:
+        inc rsi
 
-; write appropriate character sequence to output buffer in r8
-.write_decoded:
-  add rdi, rdx      ; shift base pointer rdi to the current position after decoded morse-code
-  mov r9, 1         ; make it known for prefix parser that next 3 spaces might be a word border
+        mov al, byte [rsi]
+        cmp al, 0
+        je .prefix
 
-  add rsi, rdx      ; shift code-pointer so that it points at 0, after which decoded string is located
+        mov byte [r8], al
+        inc r8
+        jmp .write_decoded_loop
 
-.write_decoded_loop:
-  inc rsi
-
-  mov al, byte [rsi]
-  cmp al, 0
-  je .prefix
-
-  mov byte [r8], al
-  inc r8
-  jmp .write_decoded_loop
-
-
-; morse-code string is parsed
-.end:
-  mov byte [r8], 0
-  ret
+.end:                           ; morse-code string is parsed
+    mov byte [r8], 0
+    ret
 
 ; -------------------------------------------------------------
 ; Check if morse codes are equal
@@ -190,30 +179,30 @@ decode_morse:
 ; ret:
 ; rax = 0 if equal
 morsecodecmpn:
-  mov rax, 0
+    mov rax, 0
 
-  push rdi
-  push rsi
-  push rdx
+    push rdi
+    push rsi
+    push rdx
 
-.loop:
-  mov al, byte [rdi]
-  sub al, byte [rsi]
-  jnz .end
+    .loop:
+        mov al, byte [rdi]
+        sub al, byte [rsi]
+        jnz .end
 
-  inc rdi
-  inc rsi
-  dec rdx
-  jnz .loop
+        inc rdi
+        inc rsi
+        dec rdx
+        jnz .loop
 
-  cmp byte [rsi], 0
-  je .end
+    cmp byte [rsi], 0
+    je .end
 
-  mov rax, 1    ; Codes are equal at first rdx characters, but rsi is longer, so they are not the same
+    mov rax, 1    ; Codes are equal at first rdx characters, but rsi is longer, so they are not the same
 
 .end:
-  pop rdx
-  pop rsi
-  pop rdi
-  ret
+    pop rdx
+    pop rsi
+    pop rdi
+    ret
 
