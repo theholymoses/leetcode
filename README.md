@@ -1,2 +1,2 @@
-Screwing around with codewars tasks <br />
+Screwing around with codewars/leetcode tasks <br />
 TODO: write tests
